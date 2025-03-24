@@ -1,0 +1,15 @@
+{
+    "seed": 12345,
+    "num_records": 500,
+    "output": "dados_config_exemplo.csv",
+    "dias_passados": 60,
+    "temp_min": 18,
+    "temp_max": 32,
+    "velocidade_min": 30,
+    "velocidade_max": 100,
+    "ano_min": 2015,
+    "ano_max": 2023,
+    "show_sample": true,
+    "show_stats": true,
+    "locale": "pt_BR"
+} 
