@@ -8,6 +8,7 @@ Este script gera dados sintéticos de placas de veículos para o Distrito Federa
 - Inclui combinações realistas de tipos de veículos, marcas e modelos
 - Cria timestamps distribuídos ao longo de um período configurável
 - Fornece dados contextuais como condições climáticas e de tráfego
+- Detecta e classifica possíveis infrações de trânsito com base nas condições
 - Totalmente configurável via argumentos de linha de comando para controle preciso da geração
 - Garante reprodutibilidade completa quando a mesma seed é utilizada
 
@@ -43,6 +44,10 @@ Este script gera dados sintéticos de placas de veículos para o Distrito Federa
 - `condicao_trafego`: Condições de tráfego
 - `velocidade`: Velocidade estimada do veículo (km/h)
 - `direcao_deslocamento`: Direção de deslocamento do veículo
+- `limite_velocidade`: Limite de velocidade do local da detecção (km/h)
+
+### Dados de Infrações
+- `infracao`: Possível infração detectada (ex: excesso de velocidade, avanço de sinal, dirigir utilizando celular)
 
 ### Campos Derivados
 - `dia_semana`: Dia da semana da detecção
@@ -81,6 +86,7 @@ python gen-plates.py [opções]
 - `--temp-max MAX`: Temperatura máxima em °C (padrão: 30.0)
 
 #### Configurações de Velocidade
+- `--velocidade-min MIN`: Velocidade mínima em km/h (padrão: 0)
 - `--velocidade-max MAX`: Velocidade máxima em km/h (padrão: 120)
 
 #### Configurações de Ano dos Veículos
@@ -134,6 +140,44 @@ Gerar dados com veículos mais novos:
 python gen-plates.py --ano-min 2018 --ano-max 2023
 ```
 
+Gerar dados com intervalo de velocidade específico:
+```bash
+python gen-plates.py --velocidade-min 30 --velocidade-max 150
+```
+
+## Sistema de Infrações
+
+O script inclui um sistema inteligente para detecção de possíveis infrações de trânsito, considerando:
+
+1. **Limite de velocidade do local**: Cada local tem um limite de velocidade predefinido (30-60 km/h)
+2. **Condições ambientais**: O limite é automaticamente ajustado com base em:
+   - Condição da estrada (redução de 20% em vias molhadas, 30% em obras)
+   - Condição climática (redução adicional de 10% em condições chuvosas)
+3. **Idade do veículo**: Veículos mais antigos têm maior probabilidade de certas infrações
+
+### Tipos de Infrações Detectadas
+
+- **Infrações de velocidade**:
+  - Excesso leve (até 20% acima do limite)
+  - Excesso médio (entre 20% e 50% acima do limite)
+  - Excesso grave (mais de 50% acima do limite)
+
+- **Infrações de documentação e condições**:
+  - Veículo sem licenciamento atualizado
+  - Veículo em condições irregulares
+  - Falta de equipamento obrigatório
+
+- **Infrações de comportamento**:
+  - Avanço de sinal vermelho
+  - Trafegar na contramão
+  - Dirigir utilizando celular
+  - Transitar em faixa exclusiva
+  - Conduzir sem farol aceso em rodovia
+  - Estacionamento ou parada em local proibido
+
+- **Infrações por condições da via**:
+  - Velocidade incompatível com as condições da via
+
 ## Combinações Realistas
 
 O script garante combinações realistas entre:
@@ -150,6 +194,7 @@ Para personalizar ainda mais:
 - Adicione novas regiões administrativas, marcas/modelos de veículos, etc.
 - Modifique as funções de geração para criar padrões diferentes
 - Ajuste os parâmetros de linha de comando para cenários específicos
+- Adicione novos tipos de infrações ou modifique as probabilidades das existentes
 
 ## Requisitos
 

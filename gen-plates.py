@@ -43,6 +43,8 @@ def parse_args():
                         help='Temperatura máxima em °C')
     
     # Configurações de velocidade
+    parser.add_argument('--velocidade-min', type=int, default=0,
+                        help='Velocidade mínima em km/h')
     parser.add_argument('--velocidade-max', type=int, default=120,
                         help='Velocidade máxima em km/h')
     
@@ -90,6 +92,112 @@ def generate_deterministic_uuid(seed, index):
     random_bytes[6] = (random_bytes[6] & 0x0F) | 0x40  # versão 4
     random_bytes[8] = (random_bytes[8] & 0x3F) | 0x80  # variante DCE 1.1
     return str(uuid.UUID(bytes=bytes(random_bytes)))
+
+def determinar_infracao(velocidade, limite_velocidade, condicao_estrada, condicao_clima, tipo_veiculo, ano_veiculo):
+    """Determina se houve alguma infração de trânsito com base nos dados do veículo e condições"""
+    
+    # Lista de possíveis infrações baseadas na legislação brasileira de trânsito
+    infracoes = {
+        # Infrações de velocidade
+        "excesso_velocidade_leve": "Excesso de velocidade até 20% acima do limite",
+        "excesso_velocidade_media": "Excesso de velocidade entre 20% e 50% acima do limite",
+        "excesso_velocidade_grave": "Excesso de velocidade mais de 50% acima do limite",
+        
+        # Infrações de conduta
+        "sem_licenciamento": "Veículo sem licenciamento atualizado",
+        "veiculo_irregular": "Veículo em condições irregulares",
+        "estacionamento_proibido": "Estacionamento em local proibido",
+        "parada_proibida": "Parada em local proibido",
+        "transitar_calcada": "Transitar na calçada ou passeio",
+        
+        # Infrações de equipamentos
+        "equipamento_obrigatorio": "Falta de equipamento obrigatório",
+        "farol_apagado": "Conduzir sem farol aceso em rodovia",
+        
+        # Infrações específicas
+        "transito_faixa_exclusiva": "Transitar em faixa exclusiva",
+        "avanco_sinal": "Avanço de sinal vermelho",
+        "contramao": "Trafegar na contramão",
+        "uso_celular": "Dirigir utilizando celular", 
+        
+        # Infrações de condições climáticas e via
+        "velocidade_incompativel": "Velocidade incompatível com condições da via",
+        
+        # Sem infração
+        "sem_infracao": "Sem infração detectada"
+    }
+    
+    # Probabilidades de infrações específicas
+    prob_sem_licenciamento = 0.03  # 3% de chance para veículos mais antigos 
+    prob_equipamento = 0.04  # 4% de chance
+    prob_avanco_sinal = 0.05  # 5% de chance
+    prob_contramao = 0.02  # 2% de chance
+    prob_uso_celular = 0.07  # 7% de chance
+    prob_faixa_exclusiva = 0.04  # 4% de chance
+    prob_farol_apagado = 0.06  # 6% de chance (apenas rodovias)
+    
+    # Lista para armazenar as possíveis infrações deste caso
+    possiveis_infracoes = []
+    
+    # Verifica excesso de velocidade
+    limite_velocidade_ajustado = limite_velocidade
+    
+    # Ajusta o limite de velocidade com base nas condições da via
+    if condicao_estrada in ["Molhada", "Alagada"]:
+        limite_velocidade_ajustado = 0.8 * limite_velocidade  # Reduz 20% em vias molhadas
+    elif condicao_estrada in ["Em Obras", "Com Buracos"]:
+        limite_velocidade_ajustado = 0.7 * limite_velocidade  # Reduz 30% em obras
+    
+    # Ajusta ainda mais com base nas condições climáticas
+    if condicao_clima in ["Chuvoso", "Tempestuoso"]:
+        limite_velocidade_ajustado = 0.9 * limite_velocidade_ajustado  # Reduz mais 10%
+    
+    if velocidade > limite_velocidade_ajustado:
+        percentual_excesso = (velocidade - limite_velocidade_ajustado) / limite_velocidade_ajustado * 100
+        
+        if percentual_excesso <= 20:
+            possiveis_infracoes.append(infracoes["excesso_velocidade_leve"])
+        elif percentual_excesso <= 50:
+            possiveis_infracoes.append(infracoes["excesso_velocidade_media"])
+        else:
+            possiveis_infracoes.append(infracoes["excesso_velocidade_grave"])
+    
+    # Veículos mais antigos têm maior probabilidade de estar sem licenciamento
+    idade_veiculo = datetime.datetime.now().year - ano_veiculo
+    if idade_veiculo > 10 and random.random() < prob_sem_licenciamento * (idade_veiculo / 10):
+        possiveis_infracoes.append(infracoes["sem_licenciamento"])
+    
+    # Veículos mais antigos têm maior probabilidade de falta de equipamento obrigatório
+    if idade_veiculo > 8 and random.random() < prob_equipamento * (idade_veiculo / 8):
+        possiveis_infracoes.append(infracoes["equipamento_obrigatorio"])
+    
+    # Infrações aleatórias baseadas em probabilidade
+    if random.random() < prob_avanco_sinal:
+        possiveis_infracoes.append(infracoes["avanco_sinal"])
+    
+    if random.random() < prob_contramao:
+        possiveis_infracoes.append(infracoes["contramao"])
+    
+    if random.random() < prob_uso_celular:
+        possiveis_infracoes.append(infracoes["uso_celular"])
+    
+    if random.random() < prob_faixa_exclusiva and tipo_veiculo not in ["Ônibus"]:
+        possiveis_infracoes.append(infracoes["transito_faixa_exclusiva"])
+    
+    if random.random() < prob_farol_apagado:
+        possiveis_infracoes.append(infracoes["farol_apagado"])
+    
+    # Velocidade incompatível com condições da via
+    if (condicao_estrada in ["Molhada", "Alagada", "Em Obras"] or 
+        condicao_clima in ["Chuvoso", "Tempestuoso", "Baixa Visibilidade"]) and velocidade > 0.7 * limite_velocidade:
+        possiveis_infracoes.append(infracoes["velocidade_incompativel"])
+
+    # Se não foi detectada nenhuma infração, retornar "Sem infração"
+    if not possiveis_infracoes:
+        return infracoes["sem_infracao"]
+    
+    # Retorna uma das infrações detectadas (se houver mais de uma)
+    return random.choice(possiveis_infracoes)
 
 def generate_plate_data(args):
     """Gera um conjunto completo de registros de placas de veículos para o Distrito Federal, Brasil"""
@@ -270,6 +378,33 @@ def generate_plate_data(args):
         "Gilberto Salomão", "Lago Paranoá", "Pontão do Lago Sul"
     ]
     
+    # Limites de velocidade por tipo de local (km/h)
+    limites_velocidade = {
+        "Congresso Nacional": 40,
+        "Esplanada dos Ministérios": 60,
+        "Ponte JK": 60,
+        "Rodoviária do Plano Piloto": 40,
+        "Estádio Mané Garrincha": 40,
+        "Praça dos Três Poderes": 40,
+        "Catedral Metropolitana": 40,
+        "Parque da Cidade": 30,
+        "Memorial JK": 40,
+        "Torre de TV": 40,
+        "Universidade de Brasília": 40,
+        "Aeroporto Internacional": 60,
+        "Setor Comercial Sul": 40,
+        "Setor Bancário Sul": 40,
+        "Setor Hoteleiro Norte": 40,
+        "Setor de Embaixadas Sul": 60,
+        "Shopping Conjunto Nacional": 40,
+        "ParkShopping": 60,
+        "Taguatinga Shopping": 60,
+        "Pátio Brasil": 40,
+        "Gilberto Salomão": 60,
+        "Lago Paranoá": 60,
+        "Pontão do Lago Sul": 40
+    }
+    
     # Criar listas vazias para armazenar os dados dos veículos
     tipos_veiculos = []
     marcas_veiculos = []
@@ -304,7 +439,8 @@ def generate_plate_data(args):
     }
     
     # Add location information
-    data["local"] = [random.choice(locais) for _ in range(args.num_records)]
+    locais_gerados = [random.choice(locais) for _ in range(args.num_records)]
+    data["local"] = locais_gerados
     
     # Continue with remaining fields
     data.update({
@@ -340,9 +476,29 @@ def generate_plate_data(args):
         "condicao_trafego": [random.choice(condicoes_trafego) for _ in range(args.num_records)],
         
         # Additional fields
-        "velocidade": [random.randint(0, args.velocidade_max) for _ in range(args.num_records)], # km/h
+        "velocidade": [random.randint(args.velocidade_min, args.velocidade_max) for _ in range(args.num_records)], # km/h
         "direcao_deslocamento": [random.choice(direcoes) for _ in range(args.num_records)],
     })
+    
+    # Gerar dados de infração
+    infracoes = []
+    for i in range(args.num_records):
+        local = locais_gerados[i]
+        limite_velocidade = limites_velocidade.get(local, 60)  # Padrão 60 km/h se não especificado
+        
+        infracao = determinar_infracao(
+            data["velocidade"][i], 
+            limite_velocidade, 
+            data["condicao_estrada"][i], 
+            data["condicao_clima"][i],
+            data["tipo_veiculo"][i],
+            data["ano_veiculo"][i]
+        )
+        infracoes.append(infracao)
+    
+    # Adicionar a coluna de infrações ao dicionário de dados
+    data["infracao"] = infracoes
+    data["limite_velocidade"] = [limites_velocidade.get(local, 60) for local in locais_gerados]
     
     # Convert to DataFrame
     df = pd.DataFrame(data)
