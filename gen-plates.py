@@ -4,19 +4,68 @@ import numpy as np
 import random
 import uuid
 import datetime
+import argparse
 from faker import Faker
 
-# Set random seed for reproducibility
-np.random.seed(42)
-random.seed(42)
-fake = Faker('pt_BR')  # Using Brazilian Portuguese locale
-Faker.seed(42)
-
-# Set number of records to generate
-num_records = 1000
+def parse_args():
+    """Configura e processa os argumentos de linha de comando"""
+    parser = argparse.ArgumentParser(
+        description='Gerador de dados de placas de veículos para o Distrito Federal',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    
+    # Configurações principais
+    parser.add_argument('--seed', type=int, default=42,
+                        help='Seed para garantir reprodutibilidade dos dados')
+    parser.add_argument('--num-records', type=int, default=1000,
+                        help='Número de registros a serem gerados')
+    parser.add_argument('--output', type=str, default="dados_placas_df.csv",
+                        help='Nome do arquivo de saída')
+    
+    # Configurações de intervalo de datas
+    parser.add_argument('--dias-passados', type=int, default=30,
+                        help='Número de dias no passado para a geração de timestamps')
+    
+    # Configurações de coordenadas
+    parser.add_argument('--lat-min', type=float, default=-16.0,
+                        help='Latitude mínima para o Distrito Federal')
+    parser.add_argument('--lat-max', type=float, default=-15.5,
+                        help='Latitude máxima para o Distrito Federal')
+    parser.add_argument('--long-min', type=float, default=-48.3,
+                        help='Longitude mínima para o Distrito Federal')
+    parser.add_argument('--long-max', type=float, default=-47.3,
+                        help='Longitude máxima para o Distrito Federal')
+    
+    # Configurações de temperatura
+    parser.add_argument('--temp-min', type=float, default=15.0,
+                        help='Temperatura mínima em °C')
+    parser.add_argument('--temp-max', type=float, default=30.0,
+                        help='Temperatura máxima em °C')
+    
+    # Configurações de velocidade
+    parser.add_argument('--velocidade-max', type=int, default=120,
+                        help='Velocidade máxima em km/h')
+    
+    # Configurações de ano dos veículos
+    parser.add_argument('--ano-min', type=int, default=2010,
+                        help='Ano mínimo dos veículos')
+    parser.add_argument('--ano-max', type=int, default=2023,
+                        help='Ano máximo dos veículos')
+    
+    # Configurações de exibição
+    parser.add_argument('--show-sample', action='store_true',
+                        help='Mostrar amostra dos dados gerados')
+    parser.add_argument('--show-stats', action='store_true',
+                        help='Mostrar estatísticas dos dados gerados')
+    
+    # Parâmetros de locale
+    parser.add_argument('--locale', type=str, default='pt_BR',
+                        help='Configuração regional para a faker')
+    
+    return parser.parse_args()
 
 def generate_license_plate():
-    """Generate a random Brazilian license plate number"""
+    """Gera um número de placa brasileira aleatório"""
     formats = [
         # Traditional Brazilian format: 3 letters + 4 numbers (e.g., ABC1234)
         lambda: ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ', k=3)) + ''.join(random.choices('0123456789', k=4)),
@@ -29,177 +78,331 @@ def generate_license_plate():
     ]
     return random.choice(formats)()
 
-def generate_plate_data():
-    """Generate a complete dataset of license plate records for Brazil"""
+# Função para gerar UUIDs determinísticos baseados em seed
+def generate_deterministic_uuid(seed, index):
+    """Gera UUIDs determinísticos baseados em seed e índice"""
+    # Criar um gerador de números aleatórios com a seed específica para cada índice
+    r = random.Random(f"{seed}-{index}")
+    # Gerar 16 bytes aleatórios (128 bits) para o UUID
+    random_bytes = bytes([r.randint(0, 255) for _ in range(16)])
+    # Criar UUID a partir dos bytes, ajustando a versão (version 4) e variante (DCE 1.1)
+    random_bytes = bytearray(random_bytes)
+    random_bytes[6] = (random_bytes[6] & 0x0F) | 0x40  # versão 4
+    random_bytes[8] = (random_bytes[8] & 0x3F) | 0x80  # variante DCE 1.1
+    return str(uuid.UUID(bytes=bytes(random_bytes)))
+
+def generate_plate_data(args):
+    """Gera um conjunto completo de registros de placas de veículos para o Distrito Federal, Brasil"""
     
-    # Brazilian states
-    states = [
-        "Acre", "Alagoas", "Amapá", "Amazonas", "Bahia", "Ceará", 
-        "Distrito Federal", "Espírito Santo", "Goiás", "Maranhão", 
-        "Mato Grosso", "Mato Grosso do Sul", "Minas Gerais", "Pará", 
-        "Paraíba", "Paraná", "Pernambuco", "Piauí", "Rio de Janeiro", 
-        "Rio Grande do Norte", "Rio Grande do Sul", "Rondônia", 
-        "Roraima", "Santa Catarina", "São Paulo", "Sergipe", "Tocantins"
+    # Administrative regions of Distrito Federal
+    df_regions = [
+        "Brasília (Plano Piloto)", "Samambaia", "Taguatinga", "Águas Claras", "Guará", 
+        "Ceilândia", "Gama", "Sobradinho", "Planaltina", "Santa Maria", 
+        "Recanto das Emas", "Riacho Fundo", "São Sebastião", "Paranoá", "Núcleo Bandeirante", 
+        "Lago Sul", "Lago Norte", "Brazlândia", "Candangolândia", "Cruzeiro", 
+        "Itapoã", "Jardim Botânico", "SIA", "Sudoeste/Octogonal", "Varjão", 
+        "Vicente Pires", "Fercal", "Estrutural", "Sobradinho II", "Park Way"
     ]
     
     # Plate types
-    plate_types = ["Standard", "Commercial", "Temporary", "Official", "Diplomatic", "Collector"]
+    tipos_placa = ["Padrão", "Comercial", "Temporária", "Oficial", "Diplomática", "Colecionador"]
     
-    # Vehicle types
-    vehicle_types = ["Car", "Truck", "SUV", "Motorcycle", "Bus", "Van"]
-    
-    # Vehicle makes popular in Brazil
-    vehicle_makes = [
-        "Volkswagen", "Fiat", "Chevrolet", "Toyota", "Hyundai", 
-        "Renault", "Honda", "Ford", "Jeep", "Nissan", "Mitsubishi", 
-        "Citroën", "Peugeot", "BMW", "Mercedes-Benz", "Audi", "Kia"
-    ]
-    
-    # Vehicle models popular in Brazil
-    vehicle_models = {
-        "Volkswagen": ["Gol", "Polo", "T-Cross", "Virtus", "Nivus", "Jetta", "Amarok", "Saveiro", "Taos"],
-        "Fiat": ["Argo", "Mobi", "Uno", "Toro", "Strada", "Pulse", "Cronos", "Fastback", "Fiorino"],
-        "Chevrolet": ["Onix", "Tracker", "Cruze", "S10", "Spin", "Montana", "Equinox", "Joy"],
-        "Toyota": ["Corolla", "Hilux", "SW4", "Yaris", "Corolla Cross", "RAV4", "Etios"],
-        "Hyundai": ["HB20", "Creta", "Tucson", "i30", "HB20S", "Santa Fe", "Elantra"],
-        "Renault": ["Kwid", "Sandero", "Duster", "Logan", "Captur", "Stepway", "Oroch"],
-        "Honda": ["Civic", "HR-V", "Fit", "City", "WR-V", "CR-V", "Accord"],
-        "Ford": ["Ka", "EcoSport", "Ranger", "Territory", "Bronco", "Maverick"],
-        "Jeep": ["Renegade", "Compass", "Commander", "Wrangler", "Cherokee"],
-        "Nissan": ["Kicks", "Versa", "Frontier", "Sentra", "March", "Leaf"],
-        "Mitsubishi": ["L200", "Pajero", "ASX", "Eclipse Cross", "Outlander"],
-        "Citroën": ["C3", "C4 Cactus", "Aircross", "Jumpy", "Berlingo"],
-        "Peugeot": ["208", "2008", "3008", "Partner", "Expert"],
-        "BMW": ["320i", "X1", "X3", "X5", "118i", "530i"],
-        "Mercedes-Benz": ["Classe A", "Classe C", "GLA", "GLC", "Classe E"],
-        "Audi": ["A3", "Q3", "A4", "Q5", "A5"],
-        "Kia": ["Sportage", "Cerato", "Sorento", "Stonic", "Rio"]
+    # Vehicle types with their corresponding makes and models
+    # This structure ensures realistic combinations of vehicle types, makes and models
+    tipos_veiculo_dados = {
+        "Carro": {
+            "marcas": [
+                "Volkswagen", "Fiat", "Chevrolet", "Toyota", "Hyundai", 
+                "Renault", "Honda", "Ford", "Nissan", "Citroën", 
+                "Peugeot", "BMW", "Mercedes-Benz", "Audi", "Kia"
+            ],
+            "modelos": {
+                "Volkswagen": ["Gol", "Polo", "Virtus", "Jetta", "Nivus", "Fox", "Voyage", "Up"],
+                "Fiat": ["Argo", "Mobi", "Uno", "Cronos", "Siena", "Palio", "Grand Siena", "Linea"],
+                "Chevrolet": ["Onix", "Cruze", "Joy", "Cobalt", "Prisma", "Spin", "Malibu"],
+                "Toyota": ["Corolla", "Yaris", "Etios", "Prius", "Camry"],
+                "Hyundai": ["HB20", "i30", "Elantra", "Azera", "Sonata", "HB20S"],
+                "Renault": ["Kwid", "Sandero", "Logan", "Fluence", "Symbol", "Megane"],
+                "Honda": ["Civic", "City", "Fit", "Accord", "WR-V"],
+                "Ford": ["Ka", "Focus", "Fusion", "Fiesta"],
+                "Nissan": ["Versa", "Sentra", "March", "Leaf"],
+                "Citroën": ["C3", "C4", "C4 Lounge", "C4 Picasso"],
+                "Peugeot": ["208", "308", "408", "508"],
+                "BMW": ["Série 1", "Série 3", "Série 5", "Série 7", "320i", "118i"],
+                "Mercedes-Benz": ["Classe A", "Classe C", "Classe E", "Classe S"],
+                "Audi": ["A3", "A4", "A5", "A6", "A7"],
+                "Kia": ["Cerato", "Optima", "Rio", "Cadenza"]
+            }
+        },
+        "SUV": {
+            "marcas": [
+                "Jeep", "Toyota", "Hyundai", "Volkswagen", "Chevrolet", 
+                "Ford", "Honda", "Nissan", "Mitsubishi", "Renault",
+                "BMW", "Mercedes-Benz", "Audi", "Kia", "Fiat"
+            ],
+            "modelos": {
+                "Jeep": ["Renegade", "Compass", "Commander", "Cherokee", "Wrangler"],
+                "Toyota": ["SW4", "RAV4", "Corolla Cross", "Hilux SW4", "Land Cruiser"],
+                "Hyundai": ["Creta", "Tucson", "Santa Fe", "ix35", "Kona"],
+                "Volkswagen": ["T-Cross", "Taos", "Tiguan", "Tiguan Allspace"],
+                "Chevrolet": ["Tracker", "Equinox", "Trailblazer", "Captiva"],
+                "Ford": ["EcoSport", "Territory", "Bronco", "Edge"],
+                "Honda": ["HR-V", "CR-V", "WR-V"],
+                "Nissan": ["Kicks", "X-Trail", "Murano"],
+                "Mitsubishi": ["ASX", "Outlander", "Eclipse Cross", "Pajero Sport"],
+                "Renault": ["Duster", "Captur", "Koleos"],
+                "BMW": ["X1", "X3", "X5", "X6", "X7"],
+                "Mercedes-Benz": ["GLA", "GLC", "GLE", "GLB", "GLS"],
+                "Audi": ["Q3", "Q5", "Q7", "Q8"],
+                "Kia": ["Sportage", "Sorento", "Stonic"],
+                "Fiat": ["Pulse", "Fastback", "Toro"]
+            }
+        },
+        "Caminhão": {
+            "marcas": [
+                "Mercedes-Benz", "Volkswagen", "Volvo", "Scania", "Iveco", 
+                "Ford", "DAF", "MAN", "Hyundai"
+            ],
+            "modelos": {
+                "Mercedes-Benz": ["Actros", "Atego", "Axor", "Accelo"],
+                "Volkswagen": ["Constellation", "Delivery", "Worker", "Meteor"],
+                "Volvo": ["FH", "FM", "FMX", "VM"],
+                "Scania": ["R", "G", "P", "S"],
+                "Iveco": ["Daily", "Tector", "Stralis", "Hi-Way"],
+                "Ford": ["Cargo", "F-MAX"],
+                "DAF": ["XF", "CF", "LF"],
+                "MAN": ["TGX", "TGS", "TGL", "TGM"],
+                "Hyundai": ["HD78", "HD80", "Mighty"]
+            }
+        },
+        "Motocicleta": {
+            "marcas": [
+                "Honda", "Yamaha", "Suzuki", "Kawasaki", "Harley-Davidson",
+                "BMW", "Ducati", "Triumph", "KTM", "Royal Enfield"
+            ],
+            "modelos": {
+                "Honda": ["CG 160", "Biz", "CB 300", "CB 500", "XRE 300", "Pop 110", "Bros 160", "PCX"],
+                "Yamaha": ["Factor 150", "Fazer 250", "MT-03", "MT-07", "MT-09", "Lander", "Crosser", "NMAX"],
+                "Suzuki": ["GSX-S750", "V-Strom 650", "Intruder 125", "Hayabusa", "Burgman"],
+                "Kawasaki": ["Ninja 300", "Ninja 400", "Z400", "Versys 650", "Vulcan"],
+                "Harley-Davidson": ["Street 750", "Iron 883", "Sportster", "Fat Boy", "Road King"],
+                "BMW": ["G 310", "F 750 GS", "F 850 GS", "R 1250 GS", "S 1000 RR"],
+                "Ducati": ["Monster", "Panigale", "Scrambler", "Multistrada", "Diavel"],
+                "Triumph": ["Street Twin", "Bonneville", "Tiger", "Trident", "Speed Triple"],
+                "KTM": ["Duke 200", "Duke 390", "Adventure 390", "RC 390"],
+                "Royal Enfield": ["Himalayan", "Meteor", "Classic 350", "Interceptor 650"]
+            }
+        },
+        "Ônibus": {
+            "marcas": [
+                "Mercedes-Benz", "Volkswagen", "Volvo", "Scania", "Marcopolo",
+                "Comil", "Caio", "Neobus", "Busscar"
+            ],
+            "modelos": {
+                "Mercedes-Benz": ["O-500", "O-500 RS", "OF-1721", "OF-1519", "Citaro"],
+                "Volkswagen": ["Volksbus 15.190 OD", "Volksbus 17.230 OD", "Volksbus 18.280 OT", "Volksbus 9.160 OD"],
+                "Volvo": ["B270F", "B340R", "B380R", "B450R", "B8R"],
+                "Scania": ["K360", "K400", "K410", "K440", "F250"],
+                "Marcopolo": ["Paradiso", "Viaggio", "Audace", "Torino", "Senior"],
+                "Comil": ["Campione", "Versatile", "Invictus", "Svelto"],
+                "Caio": ["Apache", "Millennium", "Solar", "Foz"],
+                "Neobus": ["New Road", "Mega", "Thunder", "Spectrum"],
+                "Busscar": ["Urbanuss", "Vissta", "El Buss", "Jum Buss"]
+            }
+        },
+        "Van": {
+            "marcas": [
+                "Mercedes-Benz", "Fiat", "Renault", "Iveco", "Peugeot",
+                "Citroën", "Volkswagen", "Ford", "Hyundai"
+            ],
+            "modelos": {
+                "Mercedes-Benz": ["Sprinter", "Vito", "Vito Tourer", "V-Class"],
+                "Fiat": ["Ducato", "Fiorino", "Doblò", "Scudo"],
+                "Renault": ["Master", "Trafic", "Kangoo"],
+                "Iveco": ["Daily", "Daily Minibus", "Daily City"],
+                "Peugeot": ["Expert", "Boxer", "Partner"],
+                "Citroën": ["Jumper", "Jumpy", "Berlingo"],
+                "Volkswagen": ["Kombi", "Transporter", "Crafter", "Delivery"],
+                "Ford": ["Transit", "Transit Custom"],
+                "Hyundai": ["HR", "H100", "Starex"]
+            }
+        }
     }
     
     # Vehicle colors
-    vehicle_colors = ["Black", "White", "Silver", "Gray", "Red", "Blue", "Green", "Yellow", "Brown", "Orange"]
+    cores_veiculo = ["Preto", "Branco", "Prata", "Cinza", "Vermelho", "Azul", "Verde", "Amarelo", "Marrom", "Laranja"]
     
-    # Camera IDs (using Brazilian highway designations)
-    camera_ids = [f"BR-{i:03d}" for i in range(101, 131)]
+    # Camera IDs (using Distrito Federal highway and avenue designations)
+    ids_camera = [
+        "EPIA-001", "EPNB-001", "EPTG-001", "EPCT-001", "EPNA-001", 
+        "EPCL-001", "EPPR-001", "EPAR-001", "W3-001", "L2-001", 
+        "L4-001", "ESPM-001", "EPIG-001", "EPDB-001", "DF-001", 
+        "DF-002", "DF-003", "DF-004", "DF-005", "DF-085", 
+        "DF-095", "DF-075", "DF-079", "DF-150", "DF-140", 
+        "BR-020", "BR-040", "BR-060", "BR-070", "BR-251"
+    ]
     
-    # Weather conditions (relevant to Brazil)
-    weather_conditions = ["Sunny", "Cloudy", "Rainy", "Foggy", "Partly Cloudy", "Clear", "Stormy"]
+    # Weather conditions (relevant to Distrito Federal)
+    condicoes_clima = ["Ensolarado", "Nublado", "Chuvoso", "Parcialmente Nublado", "Limpo", "Tempestuoso", "Ventoso"]
     
     # Visibility conditions
-    visibility_conditions = ["Daytime", "Nighttime", "Dusk", "Dawn", "Low Visibility"]
+    condicoes_visibilidade = ["Dia", "Noite", "Pôr do Sol", "Amanhecer", "Baixa Visibilidade"]
     
     # Road conditions
-    road_conditions = ["Dry", "Wet", "Flooded", "Construction", "Potholes", "Good Condition"]
+    condicoes_estrada = ["Seca", "Molhada", "Alagada", "Em Obras", "Com Buracos", "Boa Condição"]
     
     # Traffic conditions
-    traffic_conditions = ["Light", "Moderate", "Heavy", "Congested", "Standstill"]
+    condicoes_trafego = ["Leve", "Moderado", "Intenso", "Congestionado", "Parado"]
     
-    # Event types
-    event_types = ["Entry", "Exit", "Speeding", "Parking Violation", "Red Light", "Stop Sign", "Regular Scan"]
+    # Direction of travel (using Distrito Federal common directions)
+    direcoes = ["Plano Norte", "Plano Sul", "Asa Leste", "Asa Oeste", "Lago Norte", "Lago Sul", "Sentido Cidades Satélites", "Sentido Área Central"]
     
-    # Direction of travel
-    directions = ["Northbound", "Southbound", "Eastbound", "Westbound", "Northeast", "Northwest", "Southeast", "Southwest"]
-    
-    # Brazilian cities (major ones)
-    cities = [
-        "São Paulo", "Rio de Janeiro", "Brasília", "Salvador", "Fortaleza", 
-        "Belo Horizonte", "Manaus", "Curitiba", "Recife", "Porto Alegre", 
-        "Belém", "Goiânia", "Guarulhos", "Campinas", "São Luís", 
-        "São Gonçalo", "Maceió", "Duque de Caxias", "Campo Grande", "Natal"
+    # Popular locations in Distrito Federal
+    locais = [
+        "Congresso Nacional", "Esplanada dos Ministérios", "Ponte JK", 
+        "Rodoviária do Plano Piloto", "Estádio Mané Garrincha", 
+        "Praça dos Três Poderes", "Catedral Metropolitana", 
+        "Parque da Cidade", "Memorial JK", "Torre de TV", 
+        "Universidade de Brasília", "Aeroporto Internacional", 
+        "Setor Comercial Sul", "Setor Bancário Sul", "Setor Hoteleiro Norte",
+        "Setor de Embaixadas Sul", "Shopping Conjunto Nacional", 
+        "ParkShopping", "Taguatinga Shopping", "Pátio Brasil",
+        "Gilberto Salomão", "Lago Paranoá", "Pontão do Lago Sul"
     ]
+    
+    # Criar listas vazias para armazenar os dados dos veículos
+    tipos_veiculos = []
+    marcas_veiculos = []
+    modelos_veiculos = []
+    
+    # Gerar combinações realistas de tipo, marca e modelo
+    for _ in range(args.num_records):
+        # Escolher um tipo de veículo aleatório
+        tipo_veiculo = random.choice(list(tipos_veiculo_dados.keys()))
+        tipos_veiculos.append(tipo_veiculo)
+        
+        # Escolher uma marca compatível com o tipo de veículo
+        marca_veiculo = random.choice(tipos_veiculo_dados[tipo_veiculo]["marcas"])
+        marcas_veiculos.append(marca_veiculo)
+        
+        # Escolher um modelo compatível com a marca e tipo de veículo
+        modelo_veiculo = random.choice(tipos_veiculo_dados[tipo_veiculo]["modelos"][marca_veiculo])
+        modelos_veiculos.append(modelo_veiculo)
     
     # Generate data
     data = {
-        "record_id": [str(uuid.uuid4()) for _ in range(num_records)],
-        "license_plate_number": [generate_license_plate() for _ in range(num_records)],
-        "plate_state_region": [random.choice(states) for _ in range(num_records)],
-        "plate_type": [random.choice(plate_types) for _ in range(num_records)],
+        # Usar UUIDs determinísticos para garantir reprodutibilidade completa
+        "id_registro": [generate_deterministic_uuid(args.seed, i) for i in range(args.num_records)],
+        "numero_placa": [generate_license_plate() for _ in range(args.num_records)],
+        "regiao_administrativa": [random.choice(df_regions) for _ in range(args.num_records)],
+        "tipo_placa": [random.choice(tipos_placa) for _ in range(args.num_records)],
         
-        # Vehicle attributes
-        "vehicle_type": [random.choice(vehicle_types) for _ in range(num_records)],
-        "vehicle_make": [random.choice(vehicle_makes) for _ in range(num_records)],
+        # Vehicle attributes with realistic combinations
+        "tipo_veiculo": tipos_veiculos,
+        "marca_veiculo": marcas_veiculos,
+        "modelo_veiculo": modelos_veiculos,
     }
     
-    # Add vehicle models that match the makes
-    data["vehicle_model"] = [random.choice(vehicle_models[data["vehicle_make"][i]]) for i in range(num_records)]
-    
-    # Add city information
-    data["city"] = [random.choice(cities) for _ in range(num_records)]
+    # Add location information
+    data["local"] = [random.choice(locais) for _ in range(args.num_records)]
     
     # Continue with remaining fields
     data.update({
-        "vehicle_color": [random.choice(vehicle_colors) for _ in range(num_records)],
-        "vehicle_year": [random.randint(2010, 2023) for _ in range(num_records)],
+        "cor_veiculo": [random.choice(cores_veiculo) for _ in range(args.num_records)],
+        "ano_veiculo": [random.randint(args.ano_min, args.ano_max) for _ in range(args.num_records)],
         
-        # Generate timestamps over the last 30 days
-        "timestamp": [
+        # Generate timestamps over the last N days
+        "data_hora": [
             (datetime.datetime.now() - datetime.timedelta(
-                days=random.randint(0, 30),
+                days=random.randint(0, args.dias_passados),
                 hours=random.randint(0, 23),
                 minutes=random.randint(0, 59),
                 seconds=random.randint(0, 59)
             )).strftime("%Y-%m-%d %H:%M:%S") 
-            for _ in range(num_records)
+            for _ in range(args.num_records)
         ],
     })
     
-    # Generate realistic latitude and longitude for Brazil
-    # Brazil's latitude ranges from approximately 5.2 N to 33.7 S
-    # Brazil's longitude ranges from approximately 35.3 W to 73.9 W
+    # Generate realistic latitude and longitude for Distrito Federal
     data.update({
-        "latitude": [round(random.uniform(-33.7, 5.2), 6) for _ in range(num_records)],
-        "longitude": [round(random.uniform(-73.9, -35.3), 6) for _ in range(num_records)],
-        "camera_device_id": [random.choice(camera_ids) for _ in range(num_records)],
-        "image_path": [f"/images/capture_{i:04d}.jpg" for i in range(num_records)],
-        "ocr_confidence_score": [round(random.uniform(0.70, 1.0), 2) for _ in range(num_records)],
+        "latitude": [round(random.uniform(args.lat_min, args.lat_max), 6) for _ in range(args.num_records)],
+        "longitude": [round(random.uniform(args.long_min, args.long_max), 6) for _ in range(args.num_records)],
+        "id_camera": [random.choice(ids_camera) for _ in range(args.num_records)],
+        "caminho_imagem": [f"/imagens/captura_{i:04d}.jpg" for i in range(args.num_records)],
+        "confianca_ocr": [round(random.uniform(0.70, 1.0), 2) for _ in range(args.num_records)],
         
-        # Environmental data (adjusted for Brazil's climate)
-        "weather_conditions": [random.choice(weather_conditions) for _ in range(num_records)],
-        "temperature": [round(random.uniform(15.0, 40.0), 1) for _ in range(num_records)], # Celsius, warmer for Brazil
-        "visibility_lighting": [random.choice(visibility_conditions) for _ in range(num_records)],
-        "road_conditions": [random.choice(road_conditions) for _ in range(num_records)],
-        "traffic_conditions": [random.choice(traffic_conditions) for _ in range(num_records)],
+        # Environmental data (adjusted for Distrito Federal's climate)
+        "condicao_clima": [random.choice(condicoes_clima) for _ in range(args.num_records)],
+        # Distrito Federal has a specific climate with dry and wet seasons
+        "temperatura": [round(random.uniform(args.temp_min, args.temp_max), 1) for _ in range(args.num_records)], # Celsius, specific to DF
+        "visibilidade": [random.choice(condicoes_visibilidade) for _ in range(args.num_records)],
+        "condicao_estrada": [random.choice(condicoes_estrada) for _ in range(args.num_records)],
+        "condicao_trafego": [random.choice(condicoes_trafego) for _ in range(args.num_records)],
         
         # Additional fields
-        "speed": [random.randint(0, 120) for _ in range(num_records)], # km/h
-        "direction_of_travel": [random.choice(directions) for _ in range(num_records)],
-        "event_type": [random.choice(event_types) for _ in range(num_records)],
-        "error_codes_remarks": [fake.sentence() if random.random() < 0.2 else "" for _ in range(num_records)],
+        "velocidade": [random.randint(0, args.velocidade_max) for _ in range(args.num_records)], # km/h
+        "direcao_deslocamento": [random.choice(direcoes) for _ in range(args.num_records)],
     })
     
     # Convert to DataFrame
     df = pd.DataFrame(data)
     
     # Add derived fields
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df["day_of_week"] = df["timestamp"].dt.day_name()
-    df["hour_of_day"] = df["timestamp"].dt.hour
-    df["week"] = df["timestamp"].dt.isocalendar().week
-    df["month"] = df["timestamp"].dt.month
-    df["year"] = df["timestamp"].dt.year
+    df["data_hora"] = pd.to_datetime(df["data_hora"])
+    df["dia_semana"] = df["data_hora"].dt.day_name().map({
+        'Monday': 'Segunda-feira',
+        'Tuesday': 'Terça-feira',
+        'Wednesday': 'Quarta-feira',
+        'Thursday': 'Quinta-feira',
+        'Friday': 'Sexta-feira',
+        'Saturday': 'Sábado',
+        'Sunday': 'Domingo'
+    })
+    df["hora_dia"] = df["data_hora"].dt.hour
+    df["semana"] = df["data_hora"].dt.isocalendar().week
+    df["mes"] = df["data_hora"].dt.month
+    df["ano"] = df["data_hora"].dt.year
     
     # Convert back to string for CSV output
-    df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    df["data_hora"] = df["data_hora"].dt.strftime("%Y-%m-%d %H:%M:%S")
     
     return df
 
-# Generate the data
-plate_data = generate_plate_data()
+def main():
+    # Processar argumentos da linha de comando
+    args = parse_args()
+    
+    # Configurar seeds para reprodutibilidade
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+    fake = Faker(args.locale)
+    Faker.seed(args.seed)
+    
+    print(f"Configurações:")
+    print(f"  Seed: {args.seed}")
+    print(f"  Registros: {args.num_records}")
+    print(f"  Arquivo de saída: {args.output}")
+    
+    # Gerar os dados
+    dados_placas = generate_plate_data(args)
+    
+    # Salvar para CSV
+    dados_placas.to_csv(args.output, index=False)
+    
+    print(f"Gerados {len(dados_placas)} registros de placas para o Distrito Federal e salvos em {args.output}")
+    
+    # Mostrar amostra dos dados se solicitado
+    if args.show_sample:
+        print("\nAmostra de dados:")
+        print(dados_placas.head())
+    
+    # Mostrar estatísticas se solicitado
+    if args.show_stats:
+        print("\nEstatísticas dos dados:")
+        print(dados_placas.describe(include='all').T)
 
-# Save to CSV
-output_file = "license_plate_data_brazil.csv"
-plate_data.to_csv(output_file, index=False)
-
-print(f"Generated {len(plate_data)} Brazilian license plate records and saved to {output_file}")
-
-# Display sample of the data
-print("\nSample data:")
-print(plate_data.head())
-
-# %%
-# Display data statistics
-print("\nData statistics:")
-print(plate_data.describe(include='all').T)
+if __name__ == "__main__":
+    main()
 
 
 
