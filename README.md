@@ -9,7 +9,8 @@ Este script gera dados sintéticos de placas de veículos para o Distrito Federa
 - Cria timestamps distribuídos ao longo de um período configurável
 - Fornece dados contextuais como condições climáticas e de tráfego
 - Detecta e classifica possíveis infrações de trânsito com base nas condições
-- Totalmente configurável via argumentos de linha de comando para controle preciso da geração
+- Totalmente configurável via argumentos de linha de comando ou arquivo de configuração
+- Suporte para exportação direta para banco de dados MySQL
 - Garante reprodutibilidade completa quando a mesma seed é utilizada
 
 ## Campos de Dados Gerados
@@ -58,6 +59,43 @@ Este script gera dados sintéticos de placas de veículos para o Distrito Federa
 
 ## Configuração e Uso
 
+Há duas maneiras de configurar o script:
+1. **Via argumentos de linha de comando** - para execuções únicas ou testes rápidos
+2. **Via arquivo de configuração JSON** - para configurações complexas ou reutilizáveis
+
+### Armazenamento de Dados
+
+Os dados gerados podem ser armazenados de duas formas:
+1. **Arquivo CSV** - formato padrão para fácil compartilhamento e uso em diversas ferramentas
+2. **Banco de dados MySQL** - para integração com sistemas e aplicações
+
+### Arquivo de Configuração
+
+Você pode usar um arquivo de configuração JSON para definir os parâmetros do script. Isso é especialmente útil para:
+- Salvar configurações para uso posterior
+- Compartilhar configurações com outros usuários
+- Automatizar a geração de dados com parâmetros complexos
+
+**Uso básico**:
+```bash
+# Carregar configurações a partir de um arquivo
+python gen-plates.py --config config_exemplo.json
+
+# Salvar as configurações atuais em um arquivo
+python gen-plates.py --seed 123 --num-records 500 --save-config minha_config.json
+```
+
+O script inclui vários arquivos de configuração de exemplo:
+- `config_exemplo.json` - Configuração geral de exemplo
+- `config_infracoes_velocidade.json` - Configurado para gerar mais infrações de velocidade
+- `config_veiculos_antigos.json` - Configurado para gerar dados de veículos mais antigos
+- `config_mysql.json` - Configurado para salvar dados em banco MySQL
+
+**Prioridade de configurações**:
+1. Argumentos explícitos de linha de comando (maior prioridade)
+2. Configurações do arquivo JSON
+3. Valores padrão do script (menor prioridade)
+
 ### Opções de Linha de Comando
 
 O script suporta vários argumentos de linha de comando para configurar a geração de dados:
@@ -65,6 +103,10 @@ O script suporta vários argumentos de linha de comando para configurar a geraç
 ```bash
 python gen-plates.py [opções]
 ```
+
+#### Opções de Configuração
+- `--config ARQUIVO`: Carregar configurações a partir de um arquivo JSON
+- `--save-config ARQUIVO`: Salvar as configurações atuais em um arquivo JSON
 
 #### Configurações Principais
 - `--seed SEED`: Define a seed para garantir reprodutibilidade dos dados (padrão: 42)
@@ -97,6 +139,16 @@ python gen-plates.py [opções]
 - `--show-sample`: Mostrar amostra dos dados gerados
 - `--show-stats`: Mostrar estatísticas dos dados gerados
 
+#### Configurações de Banco de Dados MySQL
+- `--mysql`: Ativar armazenamento em banco de dados MySQL
+- `--mysql-host HOST`: Host do servidor MySQL (padrão: localhost)
+- `--mysql-port PORT`: Porta do servidor MySQL (padrão: 3306)
+- `--mysql-user USER`: Usuário MySQL (padrão: root)
+- `--mysql-password PASS`: Senha MySQL (se não fornecida, será solicitada interativamente)
+- `--mysql-db DB`: Nome do banco de dados (padrão: placas_veiculos)
+- `--mysql-table TABLE`: Nome da tabela (padrão: dados_placas)
+- `--mysql-if-exists {fail,replace,append}`: Ação caso a tabela já exista (padrão: replace)
+
 ### Reprodutibilidade
 
 Uma característica importante deste script é a capacidade de gerar conjuntos de dados idênticos quando a mesma seed é utilizada. Isso é fundamental para:
@@ -111,6 +163,9 @@ Exemplo de uso para garantir reprodutibilidade:
 # Ambos comandos gerarão exatamente os mesmos dados
 python gen-plates.py --seed 123 --num-records 500
 python gen-plates.py --seed 123 --num-records 500
+
+# O mesmo resultado usando arquivo de configuração
+python gen-plates.py --config config_com_seed_123.json
 ```
 
 ### Exemplos de Uso
@@ -144,6 +199,48 @@ Gerar dados com intervalo de velocidade específico:
 ```bash
 python gen-plates.py --velocidade-min 30 --velocidade-max 150
 ```
+
+Usar um arquivo de configuração para gerar dados com foco em infrações de velocidade:
+```bash
+python gen-plates.py --config config_infracoes_velocidade.json
+```
+
+Usar linha de comando para sobrescrever parâmetros do arquivo de configuração:
+```bash
+python gen-plates.py --config config_exemplo.json --seed 789 --output novo_arquivo.csv
+```
+
+Gerar dados e salvar em um banco de dados MySQL:
+```bash
+python gen-plates.py --num-records 200 --mysql --mysql-db placas_veiculos --mysql-user usuario
+```
+
+Usar arquivo de configuração para conexão MySQL:
+```bash
+python gen-plates.py --config config_mysql.json
+```
+
+### Integração com MySQL
+
+Para utilizar a funcionalidade de armazenamento em MySQL, você precisará:
+
+1. **Instalar as dependências adicionais**:
+```bash
+pip install pymysql sqlalchemy
+```
+
+2. **Criar o banco de dados**:
+```sql
+CREATE DATABASE placas_veiculos CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+3. **Configurar o acesso**:
+A senha pode ser fornecida via parâmetro `--mysql-password` ou será solicitada interativamente durante a execução (mais seguro).
+
+4. **Opções de tratamento de tabelas existentes**:
+- `fail`: Falha se a tabela já existir
+- `replace`: Substitui a tabela se já existir (padrão)
+- `append`: Adiciona novos registros à tabela existente
 
 ## Sistema de Infrações
 
@@ -195,13 +292,25 @@ Para personalizar ainda mais:
 - Modifique as funções de geração para criar padrões diferentes
 - Ajuste os parâmetros de linha de comando para cenários específicos
 - Adicione novos tipos de infrações ou modifique as probabilidades das existentes
+- Crie seus próprios arquivos de configuração JSON para casos de uso específicos
+- Configure a integração com outros bancos de dados além do MySQL
 
 ## Requisitos
 
+### Básicos
 - Python 3.6+
 - pandas
 - numpy
 - faker
+
+### Para Funcionalidade MySQL (opcionais)
+- pymysql
+- sqlalchemy
+
+Instale todas as dependências com:
+```bash
+pip install pandas numpy faker pymysql sqlalchemy
+```
 
 ## Detalhes Sobre Combinações de Veículos
 

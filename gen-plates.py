@@ -5,7 +5,18 @@ import random
 import uuid
 import datetime
 import argparse
+import json
+import os
+import sys
 from faker import Faker
+
+# Importações para conexão MySQL (importação condicional)
+try:
+    import pymysql
+    from sqlalchemy import create_engine
+    MYSQL_AVAILABLE = True
+except ImportError:
+    MYSQL_AVAILABLE = False
 
 def parse_args():
     """Configura e processa os argumentos de linha de comando"""
@@ -13,6 +24,12 @@ def parse_args():
         description='Gerador de dados de placas de veículos para o Distrito Federal',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    
+    # Opções de arquivo de configuração
+    parser.add_argument('--config', type=str,
+                       help='Caminho para arquivo de configuração JSON')
+    parser.add_argument('--save-config', type=str,
+                       help='Salvar as configurações atuais em um arquivo JSON')
     
     # Configurações principais
     parser.add_argument('--seed', type=int, default=42,
@@ -64,7 +81,125 @@ def parse_args():
     parser.add_argument('--locale', type=str, default='pt_BR',
                         help='Configuração regional para a faker')
     
-    return parser.parse_args()
+    # Configurações de banco de dados MySQL
+    if MYSQL_AVAILABLE:
+        group_mysql = parser.add_argument_group('MySQL', 'Opções para salvar dados em banco MySQL')
+        group_mysql.add_argument('--mysql', action='store_true',
+                            help='Salvar dados em banco MySQL')
+        group_mysql.add_argument('--mysql-host', type=str, default='localhost',
+                            help='Host do servidor MySQL')
+        group_mysql.add_argument('--mysql-port', type=int, default=3306,
+                            help='Porta do servidor MySQL')
+        group_mysql.add_argument('--mysql-user', type=str, default='root',
+                            help='Usuário MySQL')
+        group_mysql.add_argument('--mysql-password', type=str,
+                            help='Senha MySQL')
+        group_mysql.add_argument('--mysql-db', type=str, default='placas_veiculos',
+                            help='Nome do banco de dados MySQL')
+        group_mysql.add_argument('--mysql-table', type=str, default='dados_placas',
+                            help='Nome da tabela MySQL')
+        group_mysql.add_argument('--mysql-if-exists', type=str, default='replace',
+                            choices=['fail', 'replace', 'append'],
+                            help='Ação caso a tabela já exista: falhar, substituir ou anexar')
+    
+    args = parser.parse_args()
+    
+    # Se um arquivo de configuração for especificado, carregá-lo
+    if args.config:
+        args = load_config(args.config, args)
+    
+    # Se foi solicitado salvar as configurações atuais
+    if args.save_config:
+        save_config(args, args.save_config)
+    
+    return args
+
+def load_config(config_file, args):
+    """Carrega configurações de um arquivo JSON e as mescla com os argumentos da linha de comando"""
+    try:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+            print(f"Carregando configurações a partir de {config_file}")
+            
+            # Converter o namespace para dicionário
+            args_dict = vars(args)
+            
+            # Atualizar apenas os valores que não foram explicitamente definidos na linha de comando
+            # ou que existem no arquivo de configuração
+            for key, value in config.items():
+                # Verificar se o argumento existe nos argumentos
+                if key in args_dict and key != 'config' and key != 'save_config':
+                    # Se for um argumento booleano (store_true/store_false)
+                    if isinstance(args_dict[key], bool) and not isinstance(value, bool):
+                        continue  # Manter o valor da linha de comando
+                    
+                    # Para os demais argumentos, verificar se foi definido explicitamente
+                    if not any(arg.startswith(f"--{key.replace('_', '-')}") for arg in sys.argv):
+                        # Se não foi definido explicitamente, usar o valor do arquivo
+                        args_dict[key] = value
+            
+            # Converter de volta para namespace
+            for key, value in args_dict.items():
+                setattr(args, key, value)
+                
+            return args
+    except Exception as e:
+        print(f"Erro ao carregar o arquivo de configuração: {e}")
+        return args
+
+def save_config(args, output_file):
+    """Salva as configurações atuais em um arquivo JSON"""
+    try:
+        # Converter namespace para dicionário
+        config = vars(args)
+        
+        # Remover argumentos que não devem ser salvos
+        if 'config' in config:
+            del config['config']
+        if 'save_config' in config:
+            del config['save_config']
+        
+        with open(output_file, 'w') as f:
+            json.dump(config, f, indent=4)
+            print(f"Configurações salvas em {output_file}")
+    except Exception as e:
+        print(f"Erro ao salvar configurações: {e}")
+
+def save_to_mysql(df, args):
+    """Salva o DataFrame em um banco de dados MySQL"""
+    if not MYSQL_AVAILABLE:
+        print("ERRO: Bibliotecas para MySQL não estão instaladas.")
+        print("Execute: pip install pymysql sqlalchemy")
+        return False
+    
+    try:
+        # Se a senha não foi fornecida, solicitar interativamente
+        password = args.mysql_password
+        if password is None:
+            import getpass
+            password = getpass.getpass(f"Digite a senha para o usuário MySQL '{args.mysql_user}': ")
+        
+        # Criar string de conexão
+        conn_str = f"mysql+pymysql://{args.mysql_user}:{password}@{args.mysql_host}:{args.mysql_port}/{args.mysql_db}"
+        
+        # Criar engine do SQLAlchemy
+        engine = create_engine(conn_str)
+        
+        # Salvar o DataFrame na tabela
+        df.to_sql(
+            name=args.mysql_table,
+            con=engine,
+            if_exists=args.mysql_if_exists,
+            index=False,
+            chunksize=1000
+        )
+        
+        print(f"Dados salvos com sucesso na tabela '{args.mysql_table}' no banco de dados MySQL '{args.mysql_db}'")
+        return True
+    
+    except Exception as e:
+        print(f"Erro ao salvar dados no MySQL: {e}")
+        return False
 
 def generate_license_plate():
     """Gera um número de placa brasileira aleatório"""
@@ -546,6 +681,11 @@ def main():
     dados_placas.to_csv(args.output, index=False)
     
     print(f"Gerados {len(dados_placas)} registros de placas para o Distrito Federal e salvos em {args.output}")
+    
+    # Salvar no MySQL se solicitado
+    mysql_option_exists = hasattr(args, 'mysql') and args.mysql
+    if MYSQL_AVAILABLE and mysql_option_exists:
+        save_to_mysql(dados_placas, args)
     
     # Mostrar amostra dos dados se solicitado
     if args.show_sample:
